@@ -18,7 +18,6 @@ All submissions to the github repo will be automatically uploaded for grading on
 
 # Lab 4: Scraping (into) the Hall of Fame
 
-
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 hof <- Lahman::HallOfFame
 hof %>% 
@@ -30,3 +29,4 @@ hof %>%
   xlim(c(2000, 2022)) +
   ylab("Percent of votes")
 ```
+
