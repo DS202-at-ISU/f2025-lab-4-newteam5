@@ -9,3 +9,80 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(rvest)
+library(Lahman)
+library(dplyr)
+#check to see what hall of fame data looks like to see what to work toward.
+
+head(HallOfFame, 3)
+
+head(People)
+
+HallOfFame |> filter(yearID == 2025)
+```
+
+```{r}
+library(rvest)
+url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
+html <- read_html(url)
+table <-  html %>% html_table()
+#head(table[[1]], 3)
+
+#rename column names
+data <- table[[1]]
+actual_col_names <- data[1, ]
+colnames(data) <- actual_col_names
+data <- data[-1, ]
+head(data, 3)
+
+data <- data |> select(Name, Votes)
+
+#data |> summary()
+
+data$Votes <- as.numeric(data$Votes)
+
+data <- data |> mutate(
+  yearID = 2025, votedBy = "BBWAA", ballots = 394,
+  needed = 296, inducted = ifelse(Votes>=296, "Y", "N"), category = "Player", needed_note = NA) |>
+  rename(votes = Votes) |>
+  rename(`First Lastname` = Name)
+
+
+#data |> View()
+  
+
+ 
+```
+
+```{r}
+library(stringr)
+People |> head()
+
+People <- People |> mutate(
+  `First Lastname` = paste(
+    str_replace(nameFirst,"\\. ", "."), nameLast))
+
+x <- data$`First Lastname`
+
+a <- gsub("X-", "", x)
+b <- gsub("é", "e", a)
+c <- gsub("á", "a", b)
+d <- gsub("í", "i", c)
+
+data2 <- data |> mutate(`First Lastname` = d)
+
+
+data2 |> anti_join(
+  People %>% select(`First Lastname`, playerID), 
+  by="First Lastname")
+
+id <- People |> select(`First Lastname`, playerID)
+
+nameid <- left_join(data2,id, by = NULL)
+
+clean <- nameid |> select(playerID, yearID, votedBy, ballots, needed, votes, inducted, category, needed_note)
+
+write.csv(clean, file="HallOfFame_2025_gonzalez", row.names = FALSE)
+
+```
