@@ -15,57 +15,114 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
+```{r}
+
+library(rvest)
+library(Lahman)
+library(dplyr)
+#check to see what hall of fame data looks like to see what to work toward.
+
+head(HallOfFame, 3)
+
+head(People)
+
+HallOfFame |> filter(yearID == 2025)
+
+```
+
+```
+
 
 ```{r}
 
-# Load libraries
 library(rvest)
-library(readr)
 library(dplyr)
+library(stringr)
+library(Lahman)
+library(purrr)
+library(readr)
 
-# 1️⃣ Scrape the table from Baseball-Reference
-url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
-html <- read_html(url)
-tables <- html_table(html)
+# Manual ballots/needed per year (replace with actual values if known)
+ballots_needed_per_year <- list(
+  `2025` = list(ballots=394, needed=296),
+  `2024` = list(ballots=385, needed=289),
+  `2023` = list(ballots=398, needed=292),
+  `2022` = list(ballots=394, needed=296),
+  `2021` = list(ballots=401, needed=301),
+  `2020` = list(ballots=397, needed=298),
+  `2019` = list(ballots=425, needed=319),
+  `2018` = list(ballots=398, needed=299),
+  `2017` = list(ballots=442, needed=332),
+  `2016` = list(ballots=440, needed=330),
+  `2015` = list(ballots=549, needed=412),
+  `2014` = list(ballots=571, needed=429),
+  `2013` = list(ballots=569, needed=299),
+  `2012` = list(ballots=573, needed=427),
+  `2011` = list(ballots=581, needed=436),
+  `2010` = list(ballots=539, needed=405)
 
-# The data is usually the first table
-data <- tables[[1]]
+)
 
-# 2️⃣ Set proper column names manually
-# Extract the first row as a character vector for new names
-new_names <- as.character(data[1, ])
+# Scrape a single year
+get_hof_lahman_format <- function(year) {
+  
+  url <- paste0("https://www.baseball-reference.com/awards/hof_", year, ".shtml")
+  html_hof <- tryCatch(read_html(url), error = function(e) return(NULL))
+  if(is.null(html_hof)) return(NULL)
+  
+  tbl_node <- html_hof %>% html_element("#hof_BBWAA")
+  if(is.na(tbl_node)) return(NULL)
+  
+  tbl <- html_table(tbl_node, fill=TRUE)
+  colnames(tbl) <- make.unique(as.character(tbl[1,]))
+  tbl <- tbl[-1, ]
+  colnames(tbl) <- make.unique(colnames(tbl))
+  
+  # Detect key columns
+  name_col  <- intersect(c("Player","Name","Candidate"), colnames(tbl))[1]
+  votes_col <- intersect(c("Votes","Vote","Votes Received"), colnames(tbl))[1]
+  yrs_col   <- intersect(c("Yrs on Ballot","Yr","Years"), colnames(tbl))
+  
+  tbl <- tbl %>% rename(name = all_of(name_col), votes = all_of(votes_col))
+  if(length(yrs_col)>0) tbl <- tbl %>% rename(num = all_of(yrs_col[1])) else tbl$num <- NA
+  tbl$votes <- suppressWarnings(as.integer(tbl$votes))
+  tbl$name <- str_remove(tbl$name, "\\*")
+  
+  # Get ballots/needed for this year
+  info <- ballots_needed_per_year[[as.character(year)]]
+  if(is.null(info)) info <- list(ballots=NA, needed=NA)
+  
+  # Compute inducted
+  tbl$inducted <- if_else(tbl$votes >= info$needed, "Y", "N")
+  
+  # Add Lahman fields
+  tbl <- tbl %>%
+    mutate(
+      ballots = info$ballots,
+      needed  = info$needed,
+      needed_note = NA_character_,
+      votedBy = "BBWAA",
+      category = "Player",
+      yearID = year
+    )
+  
+  # Match to Lahman People
+  people_names <- People %>% mutate(fullName=paste(nameFirst,nameLast)) %>% select(playerID, fullName)
+  tbl <- tbl %>% left_join(people_names, by=c("name"="fullName")) %>% mutate(playerID = if_else(is.na(playerID),"unk",playerID))
+  
+  tbl %>% select(playerID, yearID, votedBy, ballots, needed, votes, inducted, category, needed_note, num)
+}
 
-# *** CRITICAL FIX: Make names unique *before* assigning ***
-colnames(data) <- make.unique(new_names)
+# Scrape multiple years
+years <- 2025:2023  # Extend as needed
+hof_lahman <- map_df(years, get_hof_lahman_format)
 
-# Remove the first row (the old header row)
-data <- data[-1, ]
+# Remove last column and sort
+hof_lahman <- hof_lahman %>% select(-last_col()) %>% arrange(playerID)
 
-# 3️⃣ Clean column names: trim spaces and replace spaces with _
-# (You are now working with unique names like 'Batting Stats', 'Batting Stats.1', etc.)
-colnames(data) <- trimws(colnames(data))
-colnames(data) <- tolower(colnames(data))
-# Replace non-alphanumeric chars (including spaces and the new '.' from make.unique) with an underscore
-colnames(data) <- gsub("[^[:alnum:]]+", "_", colnames(data))
-
-
-# 3b 🔪 Remove unwanted rows (the repeating header rows)
-# This filter step should now work because the column names are unique.
-data_clean <- data %>%
-  filter(rk != "Rk")
-
-# 4️⃣ Convert numeric columns
-# Note: Since make.unique() was used, the column names will now look slightly different.
-# For example, 'WAR7' might be 'war7' and another column might be 'war7_1' if duplicated.
-numeric_cols <- c("rk", "yob", "votes", "hofm", "hofs", "yrs", "war", "war7", "jaws") # Adjusted list
-
-data_clean <- data_clean %>%
-  mutate(across(all_of(numeric_cols), ~ parse_number(as.character(.))))
-
-# 5️⃣ & 6️⃣ Save and Check the cleaned data
-write_csv(data_clean, "HallOfFame_2025_Fixed.csv")
-head(data_clean)
-str(data_clean)
+# Save CSV
+write_csv(hof_lahman, "HallOfFame_2025.csv")
+hof_lahman
 
 ```
 
