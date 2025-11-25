@@ -57,8 +57,7 @@ text_cols <- setdiff(colnames(data), numeric_cols)
 for (col in text_cols) {
   data[[col]] <- as.character(data[[col]])
 }
-# 5️⃣a Add your name as a new column
-data$Submitted_By <- "Vaishnavi Devi Kondabathini"
+
 
 # 6️⃣ Save the cleaned table as CSV
 write_csv(data, "HallOfFame_2025.csv")
