@@ -1,0 +1,159 @@
+---
+title: "progress-report-<akent012>"
+author: "Anthony Kent"
+date: "2025-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Existing Hall of Fame Data
+
+I looked at the existing `HallOfFame` and `People` tables from the `Lahman` package to understand the structure I need to match with my scraped 2025 data
+
+```{r}
+if (!require(Lahman)) install.packages("Lahman")
+library(Lahman)
+
+library(rvest)
+library(Lahman)
+library(dplyr)
+library(stringr)
+
+
+head(HallOfFame, 3)
+
+
+head(People, 3)
+
+
+HallOfFame |> dplyr::filter(yearID == 2025)
+```
+
+
+Here I scraped the 2025 Hall of Fame ballot from Baseball-Reference
+
+```{r}
+url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
+page <- read_html(url)
+
+tables <- page |>
+  html_table(fill = TRUE)
+
+
+raw_hof <- tables[[1]]
+
+
+colnames(raw_hof) <- raw_hof[1, ]
+hof_2025 <- raw_hof[-1, ]
+
+# Keep only the columns we need for now
+hof_2025 <- hof_2025 |>
+  select(Name, Votes)
+
+head(hof_2025, 3)
+```
+
+Cleaning Scraped Data
+
+cleaned and augmented the scraped data so that it starts to resemble the `HallOfFame` structure.
+
+```{r}
+# change to numeric
+hof_2025$Votes <- as.numeric(hof_2025$Votes)
+
+
+hof_2025_clean <- hof_2025 |>
+  mutate(
+    yearID   = 2025,
+    votedBy  = "BBWAA",
+    ballots  = 394,
+    needed   = 296,
+    inducted = ifelse(Votes >= needed, "Y", "N"),
+    category = "Player",
+    needed_note = NA_character_
+  ) |>
+  rename(
+    votes = Votes,
+    `First Lastname` = Name
+  )
+
+head(hof_2025_clean, 3)
+```
+
+Matching Names to playerID
+
+I created a "First Lastname" field from the `People` table to link scraped names to `playerID`. I also did some basic string cleaning
+```{r}
+people_names <- People |>
+  mutate(
+    `First Lastname` = paste(
+      str_replace(nameFirst, "\\. ", "."),
+      nameLast
+    )
+  ) |>
+  select(`First Lastname`, playerID)
+
+
+x <- hof_2025_clean$`First Lastname`
+
+x1 <- gsub("X-", "", x)
+x2 <- gsub("é", "e", x1)
+x3 <- gsub("á", "a", x2)
+x4 <- gsub("í", "i", x3)
+
+hof_2025_clean <- hof_2025_clean |>
+  mutate(`First Lastname` = x4)
+
+
+hof_2025_clean |>
+  anti_join(people_names, by = "First Lastname")
+```
+
+Creating Final 2025 Hall of Fame Table
+
+Here I joined the scraped/cleaned data with `People` to get `playerID` and then selected columns in the same order as `HallOfFame`
+
+```{r}
+hof_with_ids <- hof_2025_clean |>
+  left_join(people_names, by = "First Lastname")
+
+hall_2025_final <- hof_with_ids |>
+  select(
+    playerID,
+    yearID,
+    votedBy,
+    ballots,
+    needed,
+    votes,
+    inducted,
+    category,
+    needed_note
+  )
+
+head(hall_2025_final, 3)
+```
+
+
+Exporting 2025 Data
+
+
+
+```{r}
+write.csv(
+  hall_2025_final,
+  file = "HallOfFame_2025_Kent.csv",
+  row.names = FALSE
+)
+```
+
+Summary:
+
+- Explored the `HallOfFame` and `People` tables to understand the structure of data
+- Scraped 2025 Hall of Fame ballot from Baseball-Reference using
+- Cleaned the data, added required columns, and changed vote counts to numeric
+- Added a `First Lastname` field to link all removed players to `playerID` from `People`
+- Performed a join and created a final 2025 Hall of Fame table
+- Exported the cleaned 2025 data to a CSV file for use by the team
