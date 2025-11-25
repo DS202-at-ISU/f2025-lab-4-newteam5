@@ -28,45 +28,44 @@ url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
 html <- read_html(url)
 tables <- html_table(html)
 
-# Usually the first table contains the data
+# The data is usually the first table
 data <- tables[[1]]
 
-# 2️⃣ Set proper column names if first row contains headers
-colnames(data) <- data[1, ]  # first row is headers
-data <- data[-1, ]            # remove first row
+# 2️⃣ Set proper column names manually
+# Extract the first row as a character vector for new names
+new_names <- as.character(data[1, ])
+
+# *** CRITICAL FIX: Make names unique *before* assigning ***
+colnames(data) <- make.unique(new_names)
+
+# Remove the first row (the old header row)
+data <- data[-1, ]
 
 # 3️⃣ Clean column names: trim spaces and replace spaces with _
+# (You are now working with unique names like 'Batting Stats', 'Batting Stats.1', etc.)
 colnames(data) <- trimws(colnames(data))
-colnames(data) <- gsub(" ", "_", colnames(data))
+colnames(data) <- tolower(colnames(data))
+# Replace non-alphanumeric chars (including spaces and the new '.' from make.unique) with an underscore
+colnames(data) <- gsub("[^[:alnum:]]+", "_", colnames(data))
+
+
+# 3b 🔪 Remove unwanted rows (the repeating header rows)
+# This filter step should now work because the column names are unique.
+data_clean <- data %>%
+  filter(rk != "Rk")
 
 # 4️⃣ Convert numeric columns
-# Check actual column names first
-colnames(data)
+# Note: Since make.unique() was used, the column names will now look slightly different.
+# For example, 'WAR7' might be 'war7' and another column might be 'war7_1' if duplicated.
+numeric_cols <- c("rk", "yob", "votes", "hofm", "hofs", "yrs", "war", "war7", "jaws") # Adjusted list
 
-# Usually columns like Ballots, Votes, Needed
-numeric_cols <- c("Ballots", "Votes", "Needed")  # adjust names if needed
+data_clean <- data_clean %>%
+  mutate(across(all_of(numeric_cols), ~ parse_number(as.character(.))))
 
-for (col in numeric_cols) {
-  if (col %in% colnames(data)) {
-    data[[col]] <- parse_number(as.character(data[[col]]))
-  }
-}
-
-# 5️⃣ Optional: convert text columns to character
-text_cols <- setdiff(colnames(data), numeric_cols)
-for (col in text_cols) {
-  data[[col]] <- as.character(data[[col]])
-}
-
-
-# 6️⃣ Save the cleaned table as CSV
-write_csv(data, "HallOfFame_2025.csv")
-
-# 7️⃣ Check the cleaned data
-head(data)
-str(data)
-
-
+# 5️⃣ & 6️⃣ Save and Check the cleaned data
+write_csv(data_clean, "HallOfFame_2025_Fixed.csv")
+head(data_clean)
+str(data_clean)
 
 ```
 
