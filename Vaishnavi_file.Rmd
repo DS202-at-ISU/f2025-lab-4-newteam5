@@ -18,41 +18,58 @@ When you click the **Knit** button a document will be generated that includes bo
 
 ```{r}
 
+# Load libraries
 library(rvest)
+library(readr)
+library(dplyr)
+
+# 1️⃣ Scrape the table from Baseball-Reference
 url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
 html <- read_html(url)
 tables <- html_table(html)
 
+# Usually the first table contains the data
 data <- tables[[1]]
-actual_col_names <- data[1, ]
-colnames(data) <- actual_col_names
-data <- data[-1, ]
 
-```
+# 2️⃣ Set proper column names if first row contains headers
+colnames(data) <- data[1, ]  # first row is headers
+data <- data[-1, ]            # remove first row
 
-Remove non-numeric characters
+# 3️⃣ Clean column names: trim spaces and replace spaces with _
+colnames(data) <- trimws(colnames(data))
+colnames(data) <- gsub(" ", "_", colnames(data))
 
-```{r}
-
-library(readr)
-data$votes <- parse_number(data$votes)
-data$needed <- parse_number(data$needed)
-data$ballots <- parse_number(data$ballots)
-
-
-
-
-```
-
-```{r}
+# 4️⃣ Convert numeric columns
+# Check actual column names first
 colnames(data)
-```
-```{r}
-# Extract the first row as headers
-colnames(data) <- data[1, ]
 
-# Remove the first row from data
-data <- data[-1, ]
+# Usually columns like Ballots, Votes, Needed
+numeric_cols <- c("Ballots", "Votes", "Needed")  # adjust names if needed
+
+for (col in numeric_cols) {
+  if (col %in% colnames(data)) {
+    data[[col]] <- parse_number(as.character(data[[col]]))
+  }
+}
+
+# 5️⃣ Optional: convert text columns to character
+text_cols <- setdiff(colnames(data), numeric_cols)
+for (col in text_cols) {
+  data[[col]] <- as.character(data[[col]])
+}
+# 5️⃣a Add your name as a new column
+data$Submitted_By <- "Vaishnavi Devi Kondabathini"
+
+# 6️⃣ Save the cleaned table as CSV
+write_csv(data, "HallOfFame_2025.csv")
+
+# 7️⃣ Check the cleaned data
+head(data)
+str(data)
+
+
 
 ```
+
+
 Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
